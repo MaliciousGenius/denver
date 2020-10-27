@@ -1,0 +1,3 @@
+ARG GITEA_VERSION
+
+FROM gitea/gitea:${GITEA_VERSION}
