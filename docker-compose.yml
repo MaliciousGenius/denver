@@ -9,6 +9,29 @@ x-logging-opts: &x-logging-opts
 
 services:
 
+  # Versioning
+  mariadb:
+    <<: *x-logging-opts
+    build:
+      context: mariadb
+      args:
+        MARIADB_VERSION: ${MARIADB_VERSION:-latest}
+    container_name: mariadb
+    environment:
+      MYSQL_ROOT_PASSWORD: Password
+      MYSQL_DATABASE: gitea
+      MYSQL_USER: gitea
+      MYSQL_PASSWORD: Password
+    hostname: mariadb
+    networks:
+      private:
+        aliases:
+          - mariadb.${DOMAIN:-local}
+          - mariadb
+    volumes:
+      - ./_mariadb-data:/var/lib/mysql:rw
+    restart: always
+
   gitea:
     <<: *x-logging-opts
     build:
@@ -16,16 +39,95 @@ services:
       args:
         GITEA_VERSION: ${GITEA_VERSION:-latest}
     container_name: gitea
+    environment:
+      OFFLINE_MODE: "true"
+      ENABLE_GZIP: "true"
+      RUN_MODE: prod
+      PROTOCOL: http
+      DB_TYPE: mysql
+      DB_HOST: mariadb:3306
+      DB_NAME: gitea
+      DB_USER: gitea
+      DB_PASSWD: Password
+      APP_NAME: "Denver - GIT Versioning Server"
+      DISABLE_SSH: "false"
+      START_SSH_SERVER: "true"
+      SSH_DOMAIN: gitea
+      SSH_PORT: 2222
+      SSH_LISTEN_PORT: 2222
     hostname: gitea
     networks:
-      - denver
+      private:
+        aliases:
+          - gitea.${DOMAIN:-local}
+          - gitea
+      public:
+        aliases:
+          - gitea.${DOMAIN:-local}
     ports:
       - '3000:3000/tcp'
-      - '2222:22/tcp'
+      - '2222:2222/tcp'
     volumes:
-      - ./_gitea_data:/data:rw
+      - ./_gitea-data:/data:rw
+    restart: always
+    depends_on:
+      - mariadb
+      
+  # CD/CI
+  drone:
+    privileged: true
+    <<: *x-logging-opts
+    build:
+      context: drone
+      args:
+        DRONE_VERSION: ${DRONE_VERSION:-latest}
+    container_name: drone
+    environment:
+      - DRONE_SERVER_HOST=drone.${DOMAIN:-local}
+      - DRONE_SERVER_PROTO=http
+      - DRONE_NETWORK=public
+      - DRONE_GITEA_SERVER=http://gitea.${DOMAIN:-local}:3000
+      - DRONE_GITEA_URL=http://gitea.${DOMAIN:-local}:3000
+      - DRONE_GITEA_PRIVATE_MODE=true
+      - DRONE_GITEA_SKIP_VERIFY=true
+    hostname: drone
+    networks:
+      private:
+        aliases:
+          - drone.${DOMAIN:-local}
+          - drone
+      public:
+        aliases:
+          - drone.${DOMAIN:-local}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - ./_drone-data:/data:rw
+    restart: always
+    depends_on:
+      - gitea
+    links:
+      - gitea
+
+  registry:
+    <<: *x-logging-opts
+    image: registry:latest
+    container_name: registry
+    hostname: registry
+    networks:
+      private:
+        aliases:
+          - registry.${DOMAIN:-local}
+          - registry
+    ports:
+      - '5000:5000/tcp'
+    volumes:
+      - ./_registry-data:/data:rw
     restart: always
 
 networks:
-  denver:
-    name: denver
+  public:
+    driver: bridge
+    name: denver_public
+  private:
+    name: denver_private
+
