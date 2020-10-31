@@ -1,0 +1,25 @@
+version: '3.8'
+
+x-logging-opts: &x-logging-opts
+  logging:
+    driver: 'json-file'
+    options:
+      max-size: '20M'
+      max-file: '5'
+
+x-build-opts: &x-build-opts
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      UBUNTU_VERSION: ${UBUNTU_VERSION:-latest}
+
+services:
+
+  cron:
+    <<: *x-logging-opts
+    <<: *x-build-opts
+    image: cron
+    container_name: cron
+
+
